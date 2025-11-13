@@ -1,4 +1,5 @@
-name: Publish sdist and wheels
+---
+name: Build CI wheels
 
 env:
   # A tag or branch name or a commit hash for the scipy/scipy repo, for which
@@ -6,22 +7,23 @@ env:
   # repo, and to a tag name (e.g., `v2.3.2`) on a release branch.
   SOURCE_REF_TO_BUILD: main
 
+
 on:
-  schedule:
-    #        ┌───────────── minute (0 - 59)
-    #        │  ┌───────────── hour (0 - 23)
-    #        │  │ ┌───────────── day of the month (1 - 31)
-    #        │  │ │ ┌───────────── month (1 - 12 or JAN-DEC)
-    #        │  │ │ │ ┌───────────── day of the week (0 - 6 or SUN-SAT)
-    #        │  │ │ │ │
-    - cron: "9  9 * * MON"
+  # TODO cron job? scipy does this
+  # Save CI by only running this on release branches or tags.
+  push: # FOR TESTING ONLY
+    branches:
+      - main
+      - v[0-9]+.[0-9]+.x
+    tags:
+      - v*
+  # Also allow running this action on PRs if requested by applying the
+  # "Run cibuildwheel" label.
   pull_request:
     branches:
       - main
-      - maintenance/**
-  push:
-    branches:
-      - main  # FOR TESTING ONLY
+      - v[0-9]+.[0-9]+.x
+
   workflow_dispatch:
     inputs:
       environment:
@@ -35,320 +37,192 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read # to fetch code (actions/checkout)
+  contents: read
 
 jobs:
-  build_wheels:
-    name: BLD > ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}-${{ matrix.buildplat[2] }}-${{ matrix.buildplat[3] }}
-    runs-on: ${{ matrix.buildplat[0] }}
-    strategy:
-      # Ensure that a wheel builder finishes even if another fails
-      fail-fast: false
-      matrix:
-        # Github Actions doesn't support pairing matrix values together, let's improvise
-        # https://github.com/github/feedback/discussions/7835#discussioncomment-1769026
-        buildplat:
-        # should also be able to do multi-archs on a single entry, e.g.
-        # [windows-2025, win*, "AMD64 x86"]. However, those two require a different compiler setup
-        # so easier to separate out here.
-        - [ubuntu-24.04, manylinux, x86_64, "", ""]
-        - [ubuntu-24.04, musllinux, x86_64, "", ""]
-        - [ubuntu-24.04-arm, manylinux, aarch64, "", ""]
-        - [ubuntu-24.04-arm, musllinux, aarch64, "", ""]
-        - [macos-13, macosx, x86_64, openblas, "10.14"]
-        - [macos-15-intel, macosx, x86_64, accelerate, "14.0"]
-        - [macos-14, macosx, arm64, openblas, "12.3"]
-        - [macos-14, macosx, arm64, accelerate, "14.0"]
-        - [windows-2025, win, AMD64, "", ""]
-        - [windows-11-arm, win, ARM64, "", ""]
-        python: [["cp311", "3.11"], ["cp312", "3.12"], ["cp313", "3.13"], ["cp313t", "3.13"], ["cp314", "cp314"], ["cp314t", "cp314"]]
-        # python[0] is used to specify the python versions made by cibuildwheel
-
-    steps:
-      - name: Checkout scipy-release
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
-
-      - name: Checkout scipy
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          repository: scipy/scipy
-          ref: ${{ env.SOURCE_REF_TO_BUILD }}
-          path: scipy-src
-          submodules: true
-          persist-credentials: false
-
-      # the version of python we'll run cibuildwheel with
-      - uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
-        with:
-          python-version: 3.13
-
-      - name: win_amd64 - install rtools
-        if: ${{ matrix.buildplat[1] == 'win' && matrix.buildplat[2] == 'AMD64' }}
-        run: |
-          # mingw-w64
-          choco install rtools -y --no-progress --force --version=4.0.0.20220206
-          echo "c:\rtools40\ucrt64\bin;" >> $env:GITHUB_PATH
-
-      - name: Set environment variables for ARM64
-        if: matrix.buildplat[1] == 'win' && matrix.buildplat[2] == 'ARM64'
-        run: |
-            echo "CC=clang-cl" >> $env:GITHUB_ENV
-            echo "CXX=clang-cl" >> $env:GITHUB_ENV
-            echo "FC=flang" >> $env:GITHUB_ENV
-            echo "TARGET_ARCH=${{ matrix.buildplat[2] }}" >> $env:GITHUB_ENV
-
-      - name: Set up Flang and pkgconf for ARM64
-        if: matrix.buildplat[1] == 'win' && matrix.buildplat[2] == 'ARM64'
-        uses: ./.github/windows_arm64_steps
-
-      - name: pkg-config-for-win
-        if: runner.os == 'windows'
-        run: |
-          choco install -y --no-progress --stoponfirstfailure --checksum 6004DF17818F5A6DBF19CB335CC92702 pkgconfiglite
-          $CIBW = "${{ github.workspace }}/.openblas"
-          # pkgconfig needs a complete path, and not just "./openblas since the
-          # build is run in a tmp dir (?)
-          # It seems somewhere in the env passing, `\` is not
-          # passed through, so convert it to '/'
-          $CIBW = $CIBW.replace("\","/")
-          echo "CIBW_ENVIRONMENT_WINDOWS=PKG_CONFIG_PATH=$CIBW" >> $env:GITHUB_ENV
-
-      # the macOS matrix is complicated.
-      # - arm64,  accelerate, >=14.0
-      #     The easiest of them all (sort of). However, if you wish to target 14 you
-      #     can only build on macos-14 with the system compiler. If you try building on
-      #     macos-15 there are libraries with a minimum target of 15. Presumably when
-      #     the macos-14 is dropped we'll need to customise the compiler a bit.
-      #     In addition, we can't use Accelerate for < 14 because the library had bugs.
-      #     This means OpenBLAS has to be used.
-      # - x86_64, accelerate, >=14.0
-      #     Complicated because x86_64 is only available on the macos-15-intel image.
-      # - x86_64, openblas, "10.14"
-      #     Complicated because x86_64 is only available on the macos-15-intel image.
-      #     Needs an older compiler.
-      # - arm64, openblas, "12.3"
-      #     Complicated because MACOS_DEPLOYMENT_TARGET has to be set to 12.3 (there's
-      #     some reason why we don't support <12.3), which results in 12_3 in the wheel
-      #     name. This is illegal, so we have to change the wheel name to 12_0 after
-      #     the build.
-      #     OpenBLAS is also complicated because the `delocate` step tries
-      #     to copy two libgfortran libraries into the wheel, and falls over. This
-      #     necessitates using install_name_tool on the scipy_openblas32 dylibs.
-      #     The libraries are also built with an older version of gfortran (11), which
-      #     requires installation of that version. Whilst this version is available
-      #     from homebrew, it doesn't come with an old enough deployment target.
-      #     We therefore have to jump through hoops to install a community packaged
-      #     compiler.
-      - name: Setup macOS
-        if: startsWith( matrix.buildplat[0], 'macos-' )
-        run: |
-          if [[ ${{ matrix.buildplat[3] }} == 'accelerate' ]]; then
-            echo CIBW_CONFIG_SETTINGS=\"setup-args=-Dblas=accelerate\" >> "$GITHUB_ENV"
-  
-            # use preinstalled gfortran for Accelerate builds
-            ln -s $(which gfortran-13) gfortran
-            export PATH=$PWD:$PATH
-            echo "PATH=$PATH" >> "$GITHUB_ENV"
-          
-            # Builds with Accelerate only target macOS>=14.0
-            CIBW_ENV="CIBW_ENVIRONMENT_MACOS=MACOSX_DEPLOYMENT_TARGET=14.0 INSTALL_OPENBLAS=false"
-          else
-            # use conda-forge compilers the difficult targets
-            INSTALL_DIR=/Users/runner/miniforge3
-  
-            wget -q -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-            
-            # Make the installer executable
-            chmod +x Miniforge3.sh
-            
-            # Run the installer in batch mode (-b) and specify the installation prefix (-p)
-            # The -u flag is for updating an existing installation if it exists
-            ./Miniforge3.sh -b -u -p "${INSTALL_DIR}"
-  
-            source "${INSTALL_DIR}/etc/profile.d/conda.sh"
-            conda init
-            conda create -q -y -n build compilers
-            echo "conda activate build" >> $HOME/.bash_profile
-            cat $HOME/.bash_profile
-            
-            CIBW_ENV="CIBW_ENVIRONMENT_MACOS=PKG_CONFIG_PATH=$PWD/.openblas \
-            MACOSX_DEPLOYMENT_TARGET=${{ matrix.buildplat[4] }}"
-          fi
-          echo "$CIBW_ENV" >> $GITHUB_ENV
-
-          PREFIX=DYLD_LIBRARY_PATH="\$(dirname \$(gfortran --print-file-name libgfortran.dylib))"
-          CIBW="$PREFIX delocate-wheel -v $EXCLUDE --require-archs {delocate_archs} -w {dest_dir} {wheel}"
-          echo "CIBW_REPAIR_WHEEL_COMMAND_MACOS=$CIBW" >> $GITHUB_ENV
-
-      - name: Build Wheels
-        shell: bash -el {0}
-        run: |
-          pip install cibuildwheel
-          export CIBW_BUILD=${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}*
-          export CIBW_ARCHS=${{ matrix.buildplat[2] }}
-          export CIBW_ENABLE="cpython-freethreading cpython-prerelease"
-          cibuildwheel --output-dir=dist --config-file=cibuildwheel.toml scipy-src
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          path: ./dist/*.whl
-          name: ${{ matrix.python[0] }}-${{ matrix.buildplat[1] }}-${{ matrix.buildplat[2] }}-${{ matrix.buildplat[3] }}-${{ matrix.buildplat[4] }}
-
-      # We upload nightlies only on cron job runs, so it doesn't overlap with
-      # builds from which we publish to PyPI - we don't want these extra
-      # dependencies when building release artifacts.
-      - name: install micromamba
-        # win-arm64 is unsupported by micromamba at the moment
-        if: github.event_name == 'schedule' && matrix.buildplat[1] != 'win_arm64'
-        uses: mamba-org/setup-micromamba@b09ef9b599704322748535812ca03efb2625677b # v2.0.5
-        with:
-          # For installation of anaconda-client, required for upload to anaconda.org
-          init-shell: bash
-          environment-name: upload-env
-          create-args: >-
-            anaconda-client
-
-      - name: win-arm64 install anaconda client
-        if: github.event_name == 'schedule' && matrix.buildplat[1] == 'win_arm64'
-        run: |
-          # Rust installation needed for rpds-py.
-          Invoke-WebRequest https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe -UseBasicParsing -Outfile rustup-init.exe
-          .\rustup-init.exe -y
-          $env:PATH="$env:PATH;$env:USERPROFILE\.cargo\bin"
-          pip install anaconda-client
-
-      - name: Upload to anaconda.org
-        if: github.event_name == 'schedule' && github.repository == 'scipy/scipy-release'
-        shell: bash -el {0}  # required for micromamba
-        env:
-          TOKEN: ${{ secrets.scipy_NIGHTLY_UPLOAD_TOKEN }}
-        run: |
-          anaconda -q -t ${TOKEN} upload --force -u scientific-python-nightly-wheels ./dist/*.whl
-
-# -------------------------------------------------------------------------------------
   build_sdist:
     name: Build sdist
     runs-on: ubuntu-latest
-    if: github.repository == 'scipy/scipy-release'
+    outputs:
+      SDIST_NAME: ${{ steps.sdist.outputs.SDIST_NAME }}
 
     steps:
-      - name: Checkout scipy
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Checkout matplotlib-release
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
-          repository: scipy/scipy
-          submodules: true
-          ref: ${{ env.SOURCE_REF_TO_BUILD }}
           persist-credentials: false
+
+      - name: Checkout matplotlib
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          rpository: matplotlib/matplotlib
+          ref: ${{ env.SOURCE_REF_TO_BUILD }}
+          path: mpl-src
+          submodules: true
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c  # v6.0.0
+        name: Install Python
+        with:
+          python-version: '3.11'
+
+      # Something changed somewhere that prevents the downloaded-at-build-time
+      # licenses from being included in built wheels, so pre-download them so
+      # that they exist before the build and are included.
+      - name: Pre-download bundled licenses
+        run: >
+          curl -Lo LICENSE/LICENSE_QHULL
+          https://github.com/qhull/qhull/raw/2020.2/COPYING.txt
+
+      - name: Install dependencies
+        run: python -m pip install build twine
 
       - name: Build sdist
+        id: sdist
         run: |
-          python -m pip install -U pip build
-
-          # need openblas even for the sdist build
-          OPENBLAS=openblas32
-          pkgconf_path=$GITHUB_WORKSPACE/.openblas
-
-          rm -rf $pkgconf_path
-          mkdir -p $pkgconf_path
-
-          python -m pip install -r $GITHUB_WORKSPACE/requirements/openblas.txt
-          python -c "import scipy_${OPENBLAS}; print(scipy_${OPENBLAS}.get_pkg_config())" > $pkgconf_path/scipy-openblas.pc
-          export PKG_CONFIG_PATH=$pkgconf_path
-          echo "PKG_CONFIG_PATH=$pkgconf_path" >> "$GITHUB_ENV"
-
+          cd mpl-src
           python -m build --sdist
+          python ci/export_sdist_name.py
 
-      - name: Test the sdist
-        run: |
-          python -m pip install -v dist/*.gz
-          pip install -r $GITHUB_WORKSPACE/requirements/test.txt
-          cd .. # Can't import scipy within scipy src directory
-          python -c "import scipy, sys; print(scipy.__version__); sys.exit(scipy.test() is False)"
+      - name: Check README rendering for PyPI
+        run: twine check mpl-src/dist/*
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Upload sdist result
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
-          name: sdist
-          path: ./dist/*
+          name: cibw-sdist
+          path: mpl-src/dist/*.tar.gz
+          if-no-files-found: error
 
-# -------------------------------------------------------------------------------------
-  testpypi-publish:
-    name: Publish release to TestPyPI
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'testpypi'
-    needs: [build_wheels, build_sdist]
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/scipy
-    permissions:
-      id-token: write  # mandatory for trusted publishing
+  build_wheels:
+    needs: build_sdist
+    name: Build wheels on ${{ matrix.os }} for ${{ matrix.cibw_archs }}
+    runs-on: ${{ matrix.os }}
+    env:
+      CIBW_BEFORE_BUILD: >-
+        rm -rf {package}/build
+      CIBW_BEFORE_BUILD_WINDOWS: >-
+        pip install delvewheel &&
+        rm -rf {package}/build
+      CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
+        delvewheel repair -w {dest_dir} {wheel}
+      CIBW_AFTER_BUILD: >-
+        twine check {wheel} &&
+        python {package}/ci/check_wheel_licenses.py {wheel}
+      # On Windows, we explicitly request MSVC compilers (as GitHub Action runners have
+      # MinGW on PATH that would be picked otherwise), switch to a static build for
+      # runtimes, but use dynamic linking for `VCRUNTIME140.dll`, `VCRUNTIME140_1.dll`,
+      # and the UCRT. This avoids requiring specific versions of `MSVCP140.dll`, while
+      # keeping shared state with the rest of the Python process/extensions.
+      CIBW_CONFIG_SETTINGS_WINDOWS: >-
+        setup-args="--vsenv"
+        setup-args="-Db_vscrt=mt"
+        setup-args="-Dcpp_link_args=['ucrt.lib','vcruntime.lib','/nodefaultlib:libucrt.lib','/nodefaultlib:libvcruntime.lib']"
+      CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+      CIBW_SKIP: "*-musllinux_aarch64"
+      CIBW_TEST_COMMAND: >-
+        python {package}/ci/check_version_number.py
+      MACOSX_DEPLOYMENT_TARGET: "10.12"
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cibw_archs: "x86_64"
+          - os: ubuntu-24.04-arm
+            cibw_archs: "aarch64"
+          - os: windows-latest
+            cibw_archs: "AMD64"
+          - os: windows-11-arm
+            cibw_archs: "ARM64"
+          - os: macos-15-intel
+            cibw_archs: "x86_64"
+          - os: macos-14
+            cibw_archs: "arm64"
+
     steps:
-      - name: Download sdist and wheels
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+      - name: Download sdist
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
         with:
+          name: cibw-sdist
+          path: dist/
+
+      - name: Build wheels for CPython 3.14
+        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "cp314-* cp314t-*"
+          CIBW_ENABLE: "cpython-freethreading cpython-prerelease"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+
+      - name: Build wheels for CPython 3.13
+        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "cp313-* cp313t-*"
+          CIBW_ENABLE: cpython-freethreading
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+
+      - name: Build wheels for CPython 3.12
+        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "cp312-*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+
+      - name: Build wheels for CPython 3.11
+        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "cp311-*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+
+      - name: Build wheels for PyPy
+        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "pp311-*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_ENABLE: pypy
+        if: matrix.cibw_archs != 'aarch64' && matrix.os != 'windows-latest' && matrix.os != 'windows-11-arm'
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: cibw-wheels-${{ runner.os }}-${{ matrix.cibw_archs }}
+          path: ./wheelhouse/*.whl
+          if-no-files-found: error
+
+  publish:
+    if: github.repository == 'matplotlib/matplotlib-release' && github.event_name == 'push' && github.ref_type == 'tag'
+    name: Upload release to PyPI
+    needs: [build_sdist, build_wheels]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
+        with:
+          pattern: cibw-*
           path: dist
           merge-multiple: true
 
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+      - name: Print out packages
+        run: ls dist
+
+      - name: Generate artifact attestation for sdist and wheel
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a  # v3.0.0
         with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
-          print-hash: true
-          attestations: true
+          subject-path: dist/matplotlib-*
 
-# -------------------------------------------------------------------------------------
-  check_version:
-    name: Ensure commit is tag before upload to PyPi
-
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi'
-    needs: [build_wheels, build_sdist]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout scipy
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          repository: scipy/scipy
-          ref: ${{ env.SOURCE_REF_TO_BUILD }}
-          path: scipy-src
-          fetch-depth: 0
-          fetch-tags: true
-          submodules: false
-          persist-credentials: false
-
-      - name: Examine git commit
-        run: |
-          cd scipy-src
-          hash=$(git describe HEAD)
-          echo $hash
-          if [[ $hash == *"-"*"-"* ]]; then
-            echo "SOURCE_REF_TO_BUILD is not a tag"
-            exit 1
-          else
-            echo "SOURCE_REF_TO_BUILD is a tag"
-          fi;
-
-# -------------------------------------------------------------------------------------
-  pypi-publish:
-    name: Publish release to PyPI
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi'
-    needs: [check_version]
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/scipy
-    permissions:
-      id-token: write  # mandatory for trusted publishing
-    steps:
-      - name: Download sdist and wheels
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
-        with:
-          print-hash: true
-          attestations: true
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # v1.13.0
