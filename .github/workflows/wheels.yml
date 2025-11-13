@@ -71,10 +71,9 @@ jobs:
       # licenses from being included in built wheels, so pre-download them so
       # that they exist before the build and are included.
       - name: Pre-download bundled licenses
-        run: >
+        run: |
           mkdir -p LICENSE
-          curl -Lo LICENSE/LICENSE_QHULL
-          https://github.com/qhull/qhull/raw/2020.2/COPYING.txt
+          curl -Lo LICENSE/LICENSE_QHULL https://github.com/qhull/qhull/raw/2020.2/COPYING.txt
 
       - name: Install dependencies
         run: python -m pip install build twine
