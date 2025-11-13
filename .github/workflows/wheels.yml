@@ -95,12 +95,12 @@ jobs:
     env:
       CIBW_BEFORE_BUILD: >-
         rm -rf {package}/build &&
-        echo $PROJECT_DIR &&
-        ls $PROJECT_DIR &&
+        echo ${{ PROJECT_DIR }} &&
+        ls ${{ PROJECT_DIR }} &&
         echo &&
         echo {package} &&
         ls {package} &&
-        cat $PROJECT_DIR/tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
+        cat ${{ PROJECT_DIR }}/tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_BEFORE_BUILD_WINDOWS: >-
         pip install delvewheel &&
         rm -rf {package}/build &&
