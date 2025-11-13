@@ -67,13 +67,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Something changed somewhere that prevents the downloaded-at-build-time
-      # licenses from being included in built wheels, so pre-download them so
-      # that they exist before the build and are included.
-      - name: Pre-download bundled licenses
-        run: |
-          mkdir -p LICENSE
-          curl -Lo LICENSE/LICENSE_QHULL https://github.com/qhull/qhull/raw/2020.2/COPYING.txt
 
       - name: Install dependencies
         run: python -m pip install build twine
@@ -101,10 +94,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CIBW_BEFORE_BUILD: >-
-        rm -rf {package}/build
+        rm -rf {package}/build &&
+        cat {package}/../tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_BEFORE_BUILD_WINDOWS: >-
         pip install delvewheel &&
-        rm -rf {package}/build
+        rm -rf {package}/build &&
+        cat {package}/../tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
         delvewheel repair -w {dest_dir} {wheel}
       # On Windows, we explicitly request MSVC compilers (as GitHub Action runners have
@@ -121,7 +116,7 @@ jobs:
       CIBW_TEST_COMMAND: >-
         python -m pip install build twine &&
         twine check {wheel} &&
-        python {package}/ci/check_wheel_licenses.py {wheel} &&
+        # python {package}/ci/check_wheel_licenses.py {wheel} &&  # Disabled because we concatenate into one file here
         python {package}/ci/check_version_number.py
       MACOSX_DEPLOYMENT_TARGET: "10.12"
     strategy:
