@@ -55,7 +55,7 @@ jobs:
       - name: Checkout matplotlib
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
         with:
-          rpository: matplotlib/matplotlib
+          repository: matplotlib/matplotlib
           ref: ${{ env.SOURCE_REF_TO_BUILD }}
           path: mpl-src
           submodules: true
