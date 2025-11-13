@@ -96,7 +96,7 @@ jobs:
       CIBW_BEFORE_BUILD: >-
         rm -rf {package}/build &&
         ls &&
-        echo &&
+        echo ${pwd} &&
         echo {package} &&
         ls {package} &&
         cat tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
