@@ -72,6 +72,7 @@ jobs:
       # that they exist before the build and are included.
       - name: Pre-download bundled licenses
         run: >
+          mkdir -p LICENSE
           curl -Lo LICENSE/LICENSE_QHULL
           https://github.com/qhull/qhull/raw/2020.2/COPYING.txt
 
