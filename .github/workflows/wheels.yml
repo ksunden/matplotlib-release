@@ -95,13 +95,11 @@ jobs:
     env:
       CIBW_BEFORE_BUILD: >-
         rm -rf {package}/build &&
-        echo $GITHUB_WORKSPACE &&
-        ls $GITHUB_WORKSPACE &&
-        cat $GITHUB_WORKSPACE/tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
+        cat $GITHUB_WORKSPACE/tools/wheels/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_BEFORE_BUILD_WINDOWS: >-
         pip install delvewheel &&
         rm -rf {package}/build &&
-        cat $GITHUB_WORKSPACE/tools/wheel/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
+        cat $GITHUB_WORKSPACE/tools/wheels/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
         delvewheel repair -w {dest_dir} {wheel}
       # On Windows, we explicitly request MSVC compilers (as GitHub Action runners have
