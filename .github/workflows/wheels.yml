@@ -114,7 +114,6 @@ jobs:
       CIBW_TEST_COMMAND: >-
         python -m pip install build twine &&
         twine check {wheel} &&
-        # python {package}/ci/check_wheel_licenses.py {wheel} &&  # Disabled because we concatenate into one file here
         python {package}/ci/check_version_number.py
       MACOSX_DEPLOYMENT_TARGET: "10.12"
     strategy:
