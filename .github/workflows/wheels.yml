@@ -94,10 +94,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CIBW_BEFORE_BUILD: >-
-        rm -rf {package}/build &&
+        rm -rf {package}/build
       CIBW_BEFORE_BUILD_WINDOWS: >-
         pip install delvewheel &&
-        rm -rf {package}/build &&
+        rm -rf {package}/build
       CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
         delvewheel repair -w {dest_dir} {wheel}
       # On Windows, we explicitly request MSVC compilers (as GitHub Action runners have
