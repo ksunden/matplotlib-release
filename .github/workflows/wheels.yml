@@ -95,11 +95,9 @@ jobs:
     env:
       CIBW_BEFORE_BUILD: >-
         rm -rf {package}/build &&
-        cat ${{ github.workspace }}/tools/wheels/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_BEFORE_BUILD_WINDOWS: >-
         pip install delvewheel &&
         rm -rf {package}/build &&
-        cat ${{ github.workspace }}/tools/wheels/LICENSE_binary.txt >> {package}/LICENSE/LICENSE
       CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: >-
         delvewheel repair -w {dest_dir} {wheel}
       # On Windows, we explicitly request MSVC compilers (as GitHub Action runners have
@@ -147,6 +145,9 @@ jobs:
         with:
          name: cibw-sdist
          path: dist/
+
+      - name: Update LICENSE for binary distrobution
+        run: cat ${{ github.workspace }}/tools/wheels/LICENSE_binary.txt >> dist/${{ needs.build_sdist.outputs.SDIST_NAME }}/LICENSE/LICENSE
 
       - name: Build wheels for CPython 3.14
         uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
