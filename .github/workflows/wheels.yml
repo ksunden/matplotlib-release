@@ -148,9 +148,9 @@ jobs:
 
       - name: Update LICENSE for binary distrobution
         run: |
-          tar -xvf ../dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+          tar -xvf dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
           cat ${{ github.workspace }}/tools/wheels/LICENSE_binary.txt >> matplotlib*/LICENSE/LICENSE
-          tar -cvf ../dist/${{ needs.build_sdist.outputs.SDIST_NAME }} matplotlib* 
+          tar -cvf dist/${{ needs.build_sdist.outputs.SDIST_NAME }} matplotlib* 
 
       - name: Build wheels for CPython 3.14
         uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
