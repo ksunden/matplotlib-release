@@ -2,7 +2,7 @@
 name: Build CI wheels
 
 env:
-  # A tag or branch name or a commit hash for the scipy/scipy repo, for which
+  # A tag or branch name or a commit hash for the matplotlib/matplotlib repo, for which
   # to build wheels. This is normally set to `main` in the main branch of this
   # repo, and to a tag name (e.g., `v2.3.2`) on a release branch.
   SOURCE_REF_TO_BUILD: main
@@ -227,36 +227,85 @@ jobs:
           path: ./wheelhouse/*.whl
           if-no-files-found: error
 
-  publish:
-    if: github.repository == 'matplotlib/matplotlib-release' && github.event_name == 'push' && github.ref_type == 'tag'
-    name: Upload release to PyPI
-    needs: [build_sdist, build_wheels]
+  # -------------------------------------------------------------------------------------
+  testpypi-publish:
+    name: Publish release to TestPyPI
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'testpypi'
+    needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: release
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/matplotlib
     permissions:
-      id-token: write
-      attestations: write
-      contents: read
+      id-token: write  # mandatory for trusted publishing
     steps:
-      - name: Download packages
+      - name: Download sdist and wheels
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          print-hash: true
+          attestations: true
+
+# -------------------------------------------------------------------------------------
+  check_version:
+    name: Ensure commit is tag before upload to PyPi
+
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi'
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout matplotlib
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: matplotlib/matplotlib
+          ref: ${{ env.SOURCE_REF_TO_BUILD }}
+          path: mpl-src
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: false
+          persist-credentials: false
+
+      - name: Examine git commit
+        run: |
+          cd mpl-src
+          hash=$(git describe HEAD)
+          echo $hash
+          if [[ $hash == *"-"*"-"* ]]; then
+            echo "SOURCE_REF_TO_BUILD is not a tag"
+            exit 1
+          else
+            echo "SOURCE_REF_TO_BUILD is a tag"
+          fi;
+
+# -------------------------------------------------------------------------------------
+  pypi-publish:
+    name: Publish release to PyPI
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi'
+    needs: [check_version]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/matplotlib
+    permissions:
+      id-token: write  # mandatory for trusted publishing
+    steps:
+      - name: Download sdist and wheels
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
         with:
           pattern: cibw-*
           path: dist
           merge-multiple: true
 
-      - name: Print out packages
-        run: ls dist
-
-      - name: Run twine check
-        run: |
-          pip install twine
-          twine check dist/*
-
-      - name: Generate artifact attestation for sdist and wheel
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a  # v3.0.0
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4
         with:
-          subject-path: dist/matplotlib-*
-
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # v1.13.0
+          print-hash: true
+          attestations: true
