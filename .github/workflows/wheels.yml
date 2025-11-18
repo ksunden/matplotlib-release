@@ -88,8 +88,33 @@ jobs:
           path: mpl-src/dist/*.tar.gz
           if-no-files-found: error
 
-  build_wheels:
+  sdist_license:
     needs: build_sdist
+    name: Repackage licenses in sdist for binary distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download sdist
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
+        with:
+         name: cibw-sdist
+         path: dist/
+
+      - name: Update LICENSE for binary distribution (append auxilliary licenses to LICENSE file)
+        run: |
+          tar -xvf dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+          cat ${{ github.workspace }}/tools/wheels/LICENSE_binary.txt >> matplotlib*/LICENSE/LICENSE
+          tar -cvf dist/${{ needs.build_sdist.outputs.SDIST_NAME }} matplotlib* 
+
+      - name: Upload sdist result
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
+        with:
+          name: cibw-sdist-license
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  build_wheels:
+    needs: [build_sdist, sdist_license]
     name: Build wheels on ${{ matrix.os }} for ${{ matrix.cibw_archs }}
     runs-on: ${{ matrix.os }}
     env:
@@ -112,8 +137,7 @@ jobs:
       CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
       CIBW_SKIP: "*-musllinux_aarch64"
       CIBW_TEST_COMMAND: >-
-        python -m pip install build twine &&
-        twine check {wheel} &&
+        python -m pip install build &&
         python {package}/ci/check_version_number.py
       MACOSX_DEPLOYMENT_TARGET: "10.12"
       CIBW_TEST_ENVIRONMENT: PIP_PREFER_BINARY="1"
@@ -143,7 +167,7 @@ jobs:
       - name: Download sdist
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
         with:
-         name: cibw-sdist
+         name: cibw-sdist-license
          path: dist/
 
       - name: Update LICENSE for binary distrobution
@@ -223,6 +247,11 @@ jobs:
 
       - name: Print out packages
         run: ls dist
+
+      - name: Run twine check
+        run: |
+          pip install twine
+          twine check dist/*
 
       - name: Generate artifact attestation for sdist and wheel
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a  # v3.0.0
