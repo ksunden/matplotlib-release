@@ -94,6 +94,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout matplotlib-release
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
+        with:
+          persist-credentials: false
+
       - name: Download sdist
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
         with:
@@ -158,11 +163,6 @@ jobs:
             cibw_archs: "arm64"
 
     steps:
-
-      - name: Checkout matplotlib-release
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
-        with:
-          persist-credentials: false
 
       - name: Download sdist
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
