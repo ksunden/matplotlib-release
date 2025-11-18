@@ -5,7 +5,7 @@ env:
   # A tag or branch name or a commit hash for the scipy/scipy repo, for which
   # to build wheels. This is normally set to `main` in the main branch of this
   # repo, and to a tag name (e.g., `v2.3.2`) on a release branch.
-  SOURCE_REF_TO_BUILD: main
+  SOURCE_REF_TO_BUILD: v3.10.8
 
 
 on:
@@ -109,7 +109,7 @@ jobs:
       - name: Upload sdist result
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
-          name: cibw-sdist-license
+          name: sdist-license
           path: dist/*.tar.gz
           if-no-files-found: error
 
@@ -152,7 +152,7 @@ jobs:
             cibw_archs: "AMD64"
           - os: windows-11-arm
             cibw_archs: "ARM64"
-          - os: macos-15-intel
+          - os: macos-13
             cibw_archs: "x86_64"
           - os: macos-14
             cibw_archs: "arm64"
@@ -167,17 +167,11 @@ jobs:
       - name: Download sdist
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6.0.0
         with:
-         name: cibw-sdist-license
+         name: sdist-license
          path: dist/
 
-      - name: Update LICENSE for binary distrobution
-        run: |
-          tar -xvf dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
-          cat ${{ github.workspace }}/tools/wheels/LICENSE_binary.txt >> matplotlib*/LICENSE/LICENSE
-          tar -cvf dist/${{ needs.build_sdist.outputs.SDIST_NAME }} matplotlib* 
-
       - name: Build wheels for CPython 3.14
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
         with:
           package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
         env:
@@ -187,7 +181,7 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
 
       - name: Build wheels for CPython 3.13
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
         with:
           package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
         env:
@@ -196,7 +190,7 @@ jobs:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Build wheels for CPython 3.12
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
         with:
           package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
         env:
@@ -204,15 +198,35 @@ jobs:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Build wheels for CPython 3.11
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
         with:
           package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
         env:
           CIBW_BUILD: "cp311-*"
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
-      - name: Build wheels for PyPy
-        uses: pypa/cibuildwheel@9c00cb4f6b517705a3794b22395aedc36257242c  # v3.2.1
+      - name: Build wheels for CPython 3.10
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "cp310-*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+        # Ignore because dependencies do not provide win-arm wheels on 3.10; should be removed on merge up
+        if: matrix.os != 'windows-11-arm'
+
+      - name: Build wheels for PyPy 3.10
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
+        with:
+          package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
+        env:
+          CIBW_BUILD: "pp310-*"
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+          CIBW_ENABLE: pypy
+        if: matrix.cibw_archs != 'aarch64' && matrix.os != 'windows-latest' && matrix.os != 'windows-11-arm'
+
+      - name: Build wheels for PyPy 3.11
+        uses: pypa/cibuildwheel@95d2f3a92fbf80abe066b09418bbf128a8923df2  # v3.0.1
         with:
           package-dir: dist/${{ needs.build_sdist.outputs.SDIST_NAME }}
         env:
@@ -220,6 +234,7 @@ jobs:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
           CIBW_ENABLE: pypy
         if: matrix.cibw_archs != 'aarch64' && matrix.os != 'windows-latest' && matrix.os != 'windows-11-arm'
+      
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
