@@ -116,7 +116,7 @@ jobs:
         twine check {wheel} &&
         python {package}/ci/check_version_number.py
       MACOSX_DEPLOYMENT_TARGET: "10.12"
-      PIP_PREFER_BINARY: "1"
+      CIBW_TEST_ENVIRONMENT: PIP_PREFER_BINARY="1"
     strategy:
       matrix:
         include:
