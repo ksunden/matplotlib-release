@@ -1,4 +1,4 @@
-# Contributing to the `scipy-release` repository
+# Contributing to the `matplotlib-release` repository
 
 This repository has fairly strict contribution rules for security and
 auditability reasons, as explained in the README. PRs with improvements or bug
@@ -25,7 +25,7 @@ To get CI to run on your own fork for changes in a branch named
 ```
 If you title the commit, e.g., `DEBUG: run on fork`, it's easy to drop the
 commit again once you're done testing and before opening a PR to the
-`scipy/scipy-release` repository.
+`matplotlib/matplotlib-release` repository.
 
 Note that this will run *a lot of jobs*. If you're doing iterative testing,
 it's recommended to only select the platform(s) you're interested in like this:
@@ -64,14 +64,3 @@ it's recommended to only select the platform(s) you're interested in like this:
            # Don't build PyPy 32-bit windows
            - buildplat: [windows-2022, win32, ""]
 ```
-
-
-## Commit messages and linear history
-
-Please use the same [commit message format as for the main `scipy` repository](https://numpy.org/devdocs/dev/development_workflow.html#writing-the-commit-message).
-
-This repository requires linear history. It's preferred that contributors edit
-their commit history so the PRs they submit contain clean, independent commits.
-Note that each commit should be able to pass CI - if one commit depends on
-another, they should be merged. Maintainers may decide to squash-merge if those
-requirements aren't met.
