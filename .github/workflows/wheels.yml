@@ -5,7 +5,7 @@ env:
   # A tag or branch name or a commit hash for the matplotlib/matplotlib repo, for which
   # to build wheels. This is normally set to `main` in the main branch of this
   # repo, and to a tag name (e.g., `v2.3.2`) on a release branch.
-  SOURCE_REF_TO_BUILD: v3.10.8
+  SOURCE_REF_TO_BUILD: v3.10.9
 
 
 on:
